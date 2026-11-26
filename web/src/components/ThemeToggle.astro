@@ -1,0 +1,43 @@
+---
+// Icon-only toggle. State lives on <html data-theme> and in localStorage.
+---
+
+<button
+  id="theme-toggle"
+  class="theme-toggle"
+  type="button"
+  aria-label="Cambiar tema"
+  aria-pressed="false"
+  title="Cambiar tema"
+>
+  <span data-theme-icon aria-hidden="true">☾</span>
+</button>
+
+<script is:inline>
+  (() => {
+    const button = document.getElementById('theme-toggle');
+    if (!button) return;
+    const icon = button.querySelector('[data-theme-icon]');
+
+    function apply(theme) {
+      document.documentElement.dataset.theme = theme;
+      if (icon) icon.textContent = theme === 'light' ? '☀' : '☾';
+      const label = theme === 'light' ? 'Activar tema oscuro' : 'Activar tema claro';
+      button.setAttribute('aria-pressed', String(theme === 'light'));
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    }
+
+    apply(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+
+    button.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('ccse-theme', next);
+      } catch {
+        /* private mode: the choice just won't persist */
+      }
+      apply(next);
+    });
+  })();
+</script>

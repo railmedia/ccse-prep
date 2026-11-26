@@ -1,0 +1,70 @@
+[project]
+name = "ccse-api"
+version = "0.1.0"
+description = "CCSE exam prep API — exam engine, retrieval, explanations"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+    "fastapi>=0.115",
+    "fastembed>=0.4",
+    "httpx>=0.27",
+    "pgvector>=0.3",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+    "types-pyyaml>=6.0.12.20261113",
+]
+
+[tool.uv]
+# Keep the virtualenv outside /app so a bind-mounted source tree in dev
+# never hides the installed dependencies.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+# One loop for the whole run: the async engine's pool is bound to it.
+asyncio_default_test_loop_scope = "session"
+addopts = "-m 'not integration' --strict-markers"
+markers = [
+    "integration: needs a live postgres (and possibly network)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF", "ASYNC"]
+# B008: Depends(...) in defaults is the FastAPI idiom.
+# ASYNC240: batch jobs do deliberate blocking file IO.
+ignore = ["B008", "ASYNC240"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*"]
+ignore_missing_imports = true

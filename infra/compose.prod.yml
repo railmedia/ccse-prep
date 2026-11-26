@@ -1,0 +1,41 @@
+# Production overlay: GHCR images, Traefik routing on the existing edge.
+#
+#   TAG=<git-sha> docker compose -f compose.yml -f compose.prod.yml up -d
+#
+# No published ports: Traefik reaches the containers over the `proxy` network.
+
+services:
+  api:
+    pull_policy: always
+    networks: [internal, proxy]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      # /api must win over the host-only web router.
+      traefik.http.routers.ccse-api.rule: "Host(`${PUBLIC_HOST:?PUBLIC_HOST must be set}`) && PathPrefix(`/api`)"
+      traefik.http.routers.ccse-api.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.ccse-api.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-le}
+      traefik.http.routers.ccse-api.priority: "100"
+      traefik.http.routers.ccse-api.middlewares: ccse-api-ratelimit@docker
+      traefik.http.services.ccse-api.loadbalancer.server.port: "8000"
+      # Edge rate limit protects against abuse. Cost control lives in the app.
+      traefik.http.middlewares.ccse-api-ratelimit.ratelimit.average: "30"
+      traefik.http.middlewares.ccse-api-ratelimit.ratelimit.burst: "60"
+
+  web:
+    pull_policy: always
+    networks: [proxy]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.ccse-web.rule: "Host(`${PUBLIC_HOST:?PUBLIC_HOST must be set}`)"
+      traefik.http.routers.ccse-web.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.ccse-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-le}
+      traefik.http.routers.ccse-web.priority: "10"
+      traefik.http.services.ccse-web.loadbalancer.server.port: "80"

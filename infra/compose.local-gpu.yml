@@ -1,0 +1,8 @@
+# Local GPU only, for the developer machine's Ollama container.
+#
+#   docker compose -f compose.yml -f compose.dev.yml -f compose.local-gpu.yml \
+#     --profile local-llm up -d ollama
+
+services:
+  ollama:
+    gpus: all

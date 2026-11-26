@@ -1,0 +1,183 @@
+---
+import '../styles/global.css';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Practica la prueba CCSE con exámenes de 25 preguntas y explicaciones basadas en el manual oficial."
+    />
+    <title>CCSE Prep — práctica del examen de nacionalidad</title>
+    <ThemeInit />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="brand">
+        <h1><a href="/">CCSE Prep</a></h1>
+        <span class="tag">prueba de conocimientos constitucionales y socioculturales</span>
+        <span class="spacer"></span>
+        <span class="pill"><span class="dot" id="dot"></span><span id="status">comprobando…</span></span>
+        <ThemeToggle />
+      </header>
+
+      <section class="hero">
+        <h2>Practica como el día del examen.</h2>
+        <p>
+          25 preguntas, 45 minutos, 15 aciertos para aprobar. Sin penalización por fallar.
+          Después de cada intento, cada pregunta se explica con el manual oficial y su página.
+        </p>
+
+        <div class="actions">
+          <button class="button primary" data-mode="campaign">
+            Empezar campaña
+            <small>12 exámenes que cubren las 300 preguntas</small>
+          </button>
+          <button class="button" data-mode="random">
+            Examen aleatorio
+            <small>25 preguntas nuevas, misma proporción por tarea</small>
+          </button>
+        </div>
+        <p class="muted" id="progress" style="margin-top:1rem;font-size:.9rem"></p>
+      </section>
+
+      <h2>Practicar por tarea</h2>
+      <div class="card">
+        <p class="muted" style="margin-top:0">
+          Las tareas 1 y 5 son el 68% del examen. Practica la que más te cueste.
+        </p>
+        <div class="choices" role="radiogroup" aria-label="Cuándo corregir">
+          <label class="check">
+            <input type="radio" name="feedback" value="end" checked />
+            <span>
+              Corrección al final
+              <span class="muted">— responde todo y corrige al terminar</span>
+            </span>
+          </label>
+          <label class="check">
+            <input type="radio" name="feedback" value="immediate" />
+            <span>
+              Corrección inmediata
+              <span class="muted">— acierto o fallo y explicación al marcar</span>
+            </span>
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="whole-task" />
+          <span>
+            Todas las preguntas de la tarea
+            <span class="muted">— sin tiempo, puedes dejarlo cuando quieras</span>
+          </span>
+        </label>
+        <div class="actions">
+          <button class="button" data-practice="1">
+            Tarea 1 · Gobierno e instituciones<small>120 en total · 10 al azar</small>
+          </button>
+          <button class="button" data-practice="2">
+            Tarea 2 · Derechos y deberes<small>36 en total · 10 al azar</small>
+          </button>
+          <button class="button" data-practice="3">
+            Tarea 3 · Territorio y geografía<small>24 en total · 10 al azar</small>
+          </button>
+          <button class="button" data-practice="4">
+            Tarea 4 · Cultura e historia<small>36 en total · 10 al azar</small>
+          </button>
+          <button class="button" data-practice="5">
+            Tarea 5 · Sociedad y trámites<small>84 en total · 10 al azar</small>
+          </button>
+        </div>
+      </div>
+
+      <h2>Tus intentos</h2>
+      <div class="card" id="attempts">
+        <p class="muted" style="margin:0">Todavía no hay intentos. Empieza por la campaña.</p>
+      </div>
+
+      <footer class="site">
+        Proyecto no oficial y sin ánimo de lucro. El manual y el banco de preguntas son
+        © Instituto Cervantes, que conserva todos los derechos. {year}
+      </footer>
+    </div>
+
+    <script>
+      const dot = document.getElementById('dot');
+      const status = document.getElementById('status');
+      const progress = document.getElementById('progress');
+      const attemptsBox = document.getElementById('attempts');
+
+      fetch('/api/health')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((body) => {
+          dot?.classList.add('ok');
+          if (status) status.textContent = 'API operativa';
+          if (progress) progress.textContent = `versión ${body.version}`;
+        })
+        .catch(() => {
+          dot?.classList.add('bad');
+          if (status) status.textContent = 'API no disponible';
+        });
+
+      async function start(mode, task, allQuestions = false) {
+        const feedback =
+          document.querySelector('input[name="feedback"]:checked')?.value ?? 'end';
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach((b) => (b.disabled = true));
+        try {
+          const response = await fetch('/api/exams', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(
+              mode === 'practice'
+                ? { mode, task, size: 10, all: allQuestions, feedback }
+                : { mode },
+            ),
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail ?? 'no se pudo crear el examen');
+          location.href = `/exam?id=${body.id}`;
+        } catch (error) {
+          buttons.forEach((b) => (b.disabled = false));
+          if (progress) {
+            progress.textContent = String(error);
+            progress.className = 'error';
+          }
+        }
+      }
+
+      document.querySelectorAll('[data-mode]').forEach((button) => {
+        button.addEventListener('click', () => start(button.dataset.mode, undefined));
+      });
+      const wholeTask = document.getElementById('whole-task');
+      document.querySelectorAll('[data-practice]').forEach((button) => {
+        button.addEventListener('click', () =>
+          start('practice', Number(button.dataset.practice), Boolean(wholeTask?.checked)),
+        );
+      });
+
+      fetch('/api/attempts')
+        .then((r) => (r.ok ? r.json() : []))
+        .then((attempts) => {
+          if (!attempts.length || !attemptsBox) return;
+          const rows = attempts
+            .slice(0, 8)
+            .map((attempt) => {
+              const passed = (attempt.score ?? 0) >= 15;
+              const label = attempt.mode === 'campaign' ? `campaña ${attempt.campaign_slot}` : attempt.mode;
+              return `<div class="bar"><span>${label}</span>
+                <span class="track"><span class="fill ${passed ? 'pass' : ''}" style="width:${((attempt.score ?? 0) / attempt.total) * 100}%"></span></span>
+                <span class="mono">${attempt.score ?? 0}/${attempt.total}</span></div>`;
+            })
+            .join('');
+          attemptsBox.innerHTML = `<div class="bars">${rows}</div>`;
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

@@ -1,0 +1,91 @@
+# Shared definitions for every environment.
+#
+#   dev:  docker compose -f compose.yml -f compose.dev.yml  ...
+#   prod: docker compose -f compose.yml -f compose.prod.yml ...
+#
+# Neither file is runnable on its own: dev adds build targets and published
+# ports, prod adds GHCR images and Traefik labels. Networks are declared here
+# but attached per environment, so dev never needs the external proxy network.
+
+name: ccse-prep
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-api-env: &api-env
+  CCSE_ENV: ${CCSE_ENV:-dev}
+  CCSE_LOG_LEVEL: ${CCSE_LOG_LEVEL:-INFO}
+  CCSE_DATABASE_URL: >-
+    postgresql+asyncpg://${POSTGRES_USER:-ccse}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-ccse}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ccse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ccse}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    shm_size: 256mb
+    mem_limit: 1g
+    networks: [internal]
+    logging: *default-logging
+
+  api:
+    image: ${IMAGE_PREFIX:-ccse-prep}/api:${TAG:-latest}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    env_file:
+      - ../.env
+    environment: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    mem_limit: 512m
+    logging: *default-logging
+
+  # One-shot. Never started by `up`: only by `make migrate` / the deploy script.
+  migrate:
+    image: ${IMAGE_PREFIX:-ccse-prep}/api:${TAG:-latest}
+    profiles: ["tools"]
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - ../.env
+    environment: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [internal]
+    logging: *default-logging
+
+  web:
+    image: ${IMAGE_PREFIX:-ccse-prep}/web:${TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *default-logging
+
+networks:
+  internal:
+  proxy:
+    external: true
+
+volumes:
+  pgdata:

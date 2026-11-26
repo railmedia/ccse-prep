@@ -1,0 +1,404 @@
+---
+import '../styles/global.css';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Examen — CCSE Prep</title>
+    <ThemeInit />
+  </head>
+  <body>
+    <header class="exam-head">
+      <div class="wrap">
+        <a href="/" class="muted" style="text-decoration:none">← salir</a>
+        <span class="spacer"></span>
+        <span class="muted" id="counter">—</span>
+        <span class="timer" id="timer">45:00</span>
+        <ThemeToggle />
+      </div>
+    </header>
+
+    <div class="wrap" id="app">
+      <p class="muted">Cargando examen…</p>
+    </div>
+
+    <script>
+      const TASK_LABELS = {
+        1: 'Gobierno, legislación y participación',
+        2: 'Derechos y deberes',
+        3: 'Territorio y geografía',
+        4: 'Cultura e historia',
+        5: 'Sociedad y vida cotidiana',
+      };
+
+      const app = document.getElementById('app');
+      const timerEl = document.getElementById('timer');
+      const counterEl = document.getElementById('counter');
+
+      const state = {
+        exam: null,
+        index: 0,
+        answers: {},
+        timer: null,
+        startedAt: 0,
+        submitted: false,
+        result: null,
+        feedback: 'end',
+        verdicts: new Map(),
+      };
+
+      const byId = (id) => document.getElementById(id);
+      const esc = (value) =>
+        String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+      function questionOf(id) {
+        return state.exam.questions.find((question) => question.id === id);
+      }
+
+      function formatClock(totalSeconds) {
+        const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+        const seconds = String(totalSeconds % 60).padStart(2, '0');
+        return `${minutes}:${seconds}`;
+      }
+
+      function elapsedSeconds() {
+        return Math.max(
+          0,
+          Math.round((Date.now() - new Date(state.exam.started_at).getTime()) / 1000),
+        );
+      }
+
+      function tick() {
+        // Practice drills are untimed: the clock counts up and never submits.
+        if (!state.exam.expires_at) {
+          timerEl.textContent = formatClock(elapsedSeconds());
+          return;
+        }
+        const left = Math.max(
+          0,
+          Math.round((new Date(state.exam.expires_at).getTime() - Date.now()) / 1000),
+        );
+        timerEl.textContent = formatClock(left);
+        timerEl.classList.toggle('low', left <= 300);
+        if (left === 0 && !state.submitted) submit(true);
+      }
+
+      function verdictHtml(verdict) {
+        const explanation = verdict.explanation;
+        const head = verdict.is_correct
+          ? '<p class="verdict ok">Correcto.</p>'
+          : `<p class="verdict bad">Incorrecto. La respuesta correcta es «${verdict.answer}».</p>`;
+        if (!explanation) {
+          return `<div class="explain">${head}<p class="muted">Sin explicación disponible.</p></div>`;
+        }
+        const wrong = (explanation.why_others_wrong ?? [])
+          .map((line) => `<p>· ${esc(line)}</p>`)
+          .join('');
+        const cites = (explanation.citations ?? [])
+          .map((cite) => `<span title="${esc(cite.section)}">pág. ${cite.page}</span>`)
+          .join(' · ');
+        return `<div class="explain">
+          ${head}
+          <p><strong>${esc(explanation.summary)}</strong></p>
+          <p>${esc(explanation.why_correct)}</p>
+          ${wrong}
+          <p class="cites">Fuente: ${cites || 'manual'} · modelo: ${esc(explanation.model)}</p>
+        </div>`;
+      }
+
+      function renderQuestion() {
+        const question = state.exam.questions[state.index];
+        const selected = state.answers[question.id] ?? null;
+        const verdict = state.verdicts.get(question.id) ?? null;
+        const locked = verdict !== null;
+        counterEl.textContent = `${state.index + 1} / ${state.exam.questions.length}`;
+
+        const options = question.options
+          .map((option) => {
+            let cls = selected === option.key ? 'selected' : '';
+            let mark = '';
+            if (locked) {
+              if (option.key === verdict.answer) {
+                cls = 'correct';
+                mark = ' ✓';
+              } else if (option.key === selected) {
+                cls = 'wrong';
+                mark = ' ✗';
+              } else {
+                cls = '';
+              }
+            }
+            return `<li>
+                <label class="option ${cls}">
+                  <input type="radio" name="option" value="${option.key}" ${selected === option.key ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+                  <span><strong>${option.key}.</strong> ${esc(option.text)}${mark}</span>
+                </label>
+              </li>`;
+          })
+          .join('');
+
+        const footnote =
+          state.feedback === 'immediate'
+            ? 'Cada respuesta se corrige al marcarla; ya no se puede cambiar.'
+            : 'Las respuestas se evalúan en el servidor. Puedes cambiar de pregunta y volver: no se penalizan las respuestas en blanco.';
+
+        app.innerHTML = `
+          <div class="qmeta">Tarea ${question.task} · ${esc(TASK_LABELS[question.task] ?? '')} · ${question.kind === 'vf' ? 'verdadero o falso' : 'elige una opción'}</div>
+          <h2 class="stem" style="margin-top:.25rem">${esc(question.stem)}</h2>
+          <ul class="options">${options}</ul>
+          ${locked ? verdictHtml(verdict) : ''}
+          <div class="row">
+            <button id="prev" ${state.index === 0 ? 'disabled' : ''}>← Anterior</button>
+            <button id="next" ${state.index === state.exam.questions.length - 1 ? 'disabled' : ''}>Siguiente →</button>
+            <span class="spacer"></span>
+            <button class="primary" id="submit">Terminar</button>
+          </div>
+          <div class="grid" id="grid"></div>
+          <p class="muted" style="font-size:.85rem;margin-top:1.25rem">${footnote}</p>
+        `;
+
+        app.querySelectorAll('input[name="option"]').forEach((input) => {
+          input.addEventListener('change', () => {
+            state.answers[question.id] = input.value;
+            if (state.feedback === 'immediate') {
+              checkImmediately(question.id, input.value);
+            } else {
+              renderQuestion();
+            }
+          });
+        });
+        byId('prev')?.addEventListener('click', () => go(-1));
+        byId('next')?.addEventListener('click', () => go(1));
+        byId('submit')?.addEventListener('click', () => submit(false));
+        renderGrid();
+      }
+
+      async function checkImmediately(questionId, selected) {
+        try {
+          const response = await fetch(`/api/exams/${state.exam.id}/check`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ question_id: questionId, selected }),
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail ?? 'no se pudo comprobar la respuesta');
+          state.verdicts.set(questionId, body);
+        } catch (error) {
+          state.answers[questionId] = null;
+          alert(String(error));
+        }
+        renderQuestion();
+      }
+
+      function renderGrid() {
+        const grid = byId('grid');
+        if (!grid) return;
+        grid.classList.toggle('dense', state.exam.questions.length > 40);
+        grid.innerHTML = state.exam.questions
+          .map((question, index) => {
+            const verdict = state.verdicts.get(question.id);
+            const status = verdict
+              ? verdict.is_correct
+                ? 'ok'
+                : 'bad'
+              : state.answers[question.id]
+                ? 'answered'
+                : '';
+            const current = index === state.index ? 'current' : '';
+            return `<button class="${status} ${current}" data-index="${index}">${index + 1}</button>`;
+          })
+          .join('');
+        grid.querySelectorAll('button').forEach((button) => {
+          button.addEventListener('click', () => {
+            state.index = Number(button.dataset.index);
+            renderQuestion();
+          });
+        });
+      }
+
+      function go(delta) {
+        state.index = Math.min(state.exam.questions.length - 1, Math.max(0, state.index + delta));
+        renderQuestion();
+      }
+
+      async function submit(auto) {
+        if (state.submitted) return;
+        const blank = state.exam.questions.filter((question) => !state.answers[question.id]).length;
+        if (!auto && blank > 0 && !confirm(`Quedan ${blank} preguntas sin responder. ¿Terminar igualmente?`)) {
+          return;
+        }
+        state.submitted = true;
+        if (state.timer) clearInterval(state.timer);
+        app.innerHTML = '<p class="muted">Corrigiendo…</p>';
+        const duration = elapsedSeconds();
+        try {
+          const response = await fetch(`/api/exams/${state.exam.id}/submit`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ answers: state.answers, duration_s: duration }),
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail ?? 'no se pudo corregir');
+          state.result = body;
+          renderResult(body, auto);
+        } catch (error) {
+          state.submitted = false;
+          app.innerHTML = `<div class="error">${esc(String(error))}</div>`;
+        }
+      }
+
+      function renderResult(result, auto) {
+        const practice = result.passed === null;
+        const passed = result.passed === true;
+        timerEl.textContent = 'fin';
+        counterEl.textContent = `${result.score} / ${result.total}`;
+
+        const bars = Object.entries(result.task_breakdown)
+          .map(([task, value]) => {
+            const ratio = value.total ? value.correct / value.total : 0;
+            return `<div class="bar"><span>Tarea ${task}</span>
+              <span class="track"><span class="fill ${ratio >= 0.6 ? 'pass' : ''}" style="width:${ratio * 100}%"></span></span>
+              <span class="mono">${value.correct}/${value.total}</span></div>`;
+          })
+          .join('');
+
+        const questions = state.exam.questions;
+        const review = result.review
+          .map((item) => {
+            const question = questions.find((q) => q.id === item.question_id);
+            if (!question) return '';
+            const options = question.options
+              .map((option) => {
+                const isCorrect = option.key === item.answer;
+                const isSelected = option.key === item.selected;
+                const cls = isCorrect ? 'correct' : isSelected ? 'wrong' : '';
+                return `<li class="option ${cls}" style="cursor:default">
+                  <span><strong>${option.key}.</strong> ${esc(option.text)}${isCorrect ? ' ✓' : isSelected ? ' ✗' : ''}</span>
+                </li>`;
+              })
+              .join('');
+            const badge = item.is_correct
+              ? '<span class="pill"><span class="dot ok"></span>correcta</span>'
+              : item.selected
+                ? '<span class="pill"><span class="dot bad"></span>fallada</span>'
+                : '<span class="pill"><span class="dot"></span>en blanco</span>';
+            return `<details data-qid="${question.id}">
+              <summary><strong>${question.id}</strong> · ${esc(question.stem)} ${badge}</summary>
+              <ul class="options" style="margin-top:.85rem">${options}</ul>
+              <div class="explain" data-explain>…</div>
+            </details>`;
+          })
+          .join('');
+
+        app.innerHTML = `
+          <div class="card">
+            <div class="row">
+              <div class="score"><strong>${result.score}</strong><span class="muted">/ ${result.total}</span></div>
+              <span class="spacer"></span>
+              ${practice ? '<span class="badge">práctica</span>' : passed ? '<span class="badge pass">APTO</span>' : '<span class="badge fail">NO APTO</span>'}
+            </div>
+            <p class="muted" style="margin:.5rem 0 0">
+              ${auto ? 'El tiempo terminó y el examen se entregó automáticamente. ' : ''}
+              ${practice ? 'En práctica no hay nota de corte.' : passed ? 'Has superado el 60% exigido.' : 'Necesitas 15 aciertos de 25.'}
+            </p>
+            <div class="bars">${bars}</div>
+          </div>
+
+          <div class="row" style="margin-top:1.25rem">
+            <a class="button" href="/">Volver al inicio</a>
+            <button id="again" class="primary">Otro examen</button>
+          </div>
+
+          <h2>Revisión</h2>
+          <p class="muted" style="margin-top:0;font-size:.9rem">
+            Abre una pregunta para ver la explicación basada en el manual.
+          </p>
+          <div class="review">${review}</div>
+        `;
+
+        byId('again')?.addEventListener('click', async () => {
+          const response = await fetch('/api/exams', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ mode: 'campaign' }),
+          });
+          const body = await response.json();
+          if (response.ok) location.href = `/exam?id=${body.id}`;
+        });
+
+        app.querySelectorAll('details').forEach((details) => {
+          details.addEventListener('toggle', () => {
+            if (details.open) loadExplanation(details);
+          });
+        });
+      }
+
+      const explanations = new Map();
+
+      async function loadExplanation(details) {
+        const target = details.querySelector('[data-explain]');
+        if (!target) return;
+        const qid = details.dataset.qid;
+        if (explanations.has(qid)) {
+          target.innerHTML = explanations.get(qid);
+          return;
+        }
+        target.textContent = 'Cargando explicación…';
+        try {
+          const response = await fetch(`/api/questions/${qid}/explanation`);
+          if (!response.ok) throw new Error('sin explicación');
+          const body = await response.json();
+          const wrong = (body.why_others_wrong ?? []).map((line) => `<p>· ${esc(line)}</p>`).join('');
+          // Page numbers are precise; section labels are the nearest detected
+          // heading, so they are shown only on hover.
+          const cites = (body.citations ?? [])
+            .map((cite) => `<span title="${esc(cite.section)}">pág. ${cite.page}</span>`)
+            .join(' · ');
+          const html = `
+            <p><strong>${esc(body.summary)}</strong></p>
+            <p>${esc(body.why_correct)}</p>
+            ${wrong}
+            <p class="cites">Fuente: ${cites || 'manual'} · modelo: ${esc(body.model)}${
+              body.confidence ? ` · confianza ${body.confidence}` : ''
+            }</p>`;
+          explanations.set(qid, html);
+          target.innerHTML = html;
+        } catch {
+          target.innerHTML = '<p class="muted">Todavía no hay explicación para esta pregunta.</p>';
+        }
+      }
+
+      (async () => {
+        const id = new URLSearchParams(location.search).get('id');
+        if (!id) {
+          app.innerHTML = '<div class="error">Falta el identificador del examen.</div>';
+          return;
+        }
+        try {
+          const response = await fetch(`/api/exams/${id}`);
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail ?? 'examen no disponible');
+          state.exam = body;
+          state.feedback = body.feedback ?? 'end';
+          if (body.submitted_at) {
+            app.innerHTML = `<div class="notice">Este examen ya está corregido.</div>
+              <p><a href="/">Volver al inicio</a> para empezar otro.</p>`;
+            return;
+          }
+          state.startedAt = Date.now();
+          state.timer = setInterval(tick, 1000);
+          tick();
+          renderQuestion();
+        } catch (error) {
+          app.innerHTML = `<div class="error">${esc(String(error))}</div><p><a href="/">Volver al inicio</a></p>`;
+        }
+      })();
+    </script>
+  </body>
+</html>

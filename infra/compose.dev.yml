@@ -1,0 +1,64 @@
+# Development overlay: builds locally, publishes ports, bind-mounts source.
+#
+#   docker compose -f compose.yml -f compose.dev.yml up --build
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  api:
+    build:
+      context: ../api
+      target: dev
+    command:
+      - uvicorn
+      - app.main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --reload
+    volumes:
+      - ../api:/app
+      - ../data:/data:ro
+      # Persist ONNX model weights across `run --rm` jobs.
+      - fastembed-cache:/tmp/fastembed_cache
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    networks: [internal]
+
+  migrate:
+    build:
+      context: ../api
+      target: dev
+    volumes:
+      - ../api:/app
+    networks: [internal]
+
+  web:
+    build:
+      context: ../web
+      target: dev
+    command: ["npm", "run", "dev"]
+    environment:
+      API_URL: http://api:8000
+    volumes:
+      - ../web:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:${WEB_PORT:-4321}:4321"
+    networks: [internal]
+
+  # Local inference for development only. Never part of the prod overlay:
+  # CPU inference cannot serve traffic, and the API is unauthenticated.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    mem_limit: 8g
+
+volumes:
+  ollama-models:
+  fastembed-cache:

@@ -1,0 +1,36 @@
+# --- Python / uv ---------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Node / Astro --------------------------------------------------------
+node_modules/
+dist/
+.astro/
+npm-debug.log*
+
+# --- Local config and secrets -------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Copyrighted source material (never commit) --------------------------
+data/manual/
+data/*.pdf
+
+# --- Generated artefacts -------------------------------------------------
+docs/reports/*.svg
+docs/reports/*.json
+infra/.env
+
+# --- Editors / OS --------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+
+# A separate clone lives here (its own git repo); not part of this one.
+ccse-prep/
