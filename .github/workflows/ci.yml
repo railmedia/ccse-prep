@@ -218,16 +218,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+          if ! timeout 10 bash -c "cat < /dev/null > /dev/tcp/$DEPLOY_HOST/$DEPLOY_PORT" 2>/dev/null; then
+            echo "::error::TCP ${DEPLOY_HOST}:${DEPLOY_PORT} is not reachable from this runner."
+            echo "The app ports are up (443), so this is SSH-specific: wrong port,"
+            echo "a firewall allowing only your IP, or SSH bound to another address."
+            exit 1
+          fi
+
+          if ! ssh-keyscan -p "$DEPLOY_PORT" -T 10 -H "$DEPLOY_HOST" > ~/.ssh/known_hosts 2>/dev/null \
+             || [ ! -s ~/.ssh/known_hosts ]; then
+            echo "::error::ssh-keyscan produced no host keys for ${DEPLOY_HOST}:${DEPLOY_PORT}"
+            exit 1
+          fi
       - name: Sync compose files
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
         run: |
-          rsync -az --delete infra/ \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/infra/"
+          rsync -az --delete -e "ssh -p ${DEPLOY_PORT} -o BatchMode=yes" infra/ \
+            "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}:${{ vars.DEPLOY_PATH }}/infra/"
       - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
         run: |
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+          ssh -p "${DEPLOY_PORT}" -o BatchMode=yes \
+            "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}" \
             "cd ${{ vars.DEPLOY_PATH }} && TAG=${{ env.TAG }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} ./infra/deploy.sh"
