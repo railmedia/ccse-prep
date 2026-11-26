@@ -13,7 +13,7 @@ from app.routers.exams import _exam_out
 pytestmark = pytest.mark.integration
 
 
-async def test_practice_all_returns_the_whole_task_untimed() -> None:
+async def test_practice_all_returns_the_whole_task_untimed(seeded_bank: None) -> None:
     async with SessionLocal() as session:
         pool_size = await session.scalar(select(func.count()).where(Question.task == 3))
         if not pool_size:
@@ -35,7 +35,7 @@ async def test_practice_all_returns_the_whole_task_untimed() -> None:
         assert len(payload.questions) == pool_size
 
 
-async def test_practice_all_submits_without_expiring() -> None:
+async def test_practice_all_submits_without_expiring(seeded_bank: None) -> None:
     async with SessionLocal() as session:
         anon = AnonUser(id=uuid.uuid4())
         session.add(anon)

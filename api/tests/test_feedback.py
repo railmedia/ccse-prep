@@ -25,7 +25,7 @@ async def test_immediate_feedback_is_rejected_outside_practice() -> None:
                 await service.create_exam(session, anon.id, mode, feedback="immediate")
 
 
-async def test_check_answer_reveals_only_this_exams_questions() -> None:
+async def test_check_answer_reveals_only_this_exams_questions(seeded_bank: None) -> None:
     async with SessionLocal() as session:
         anon = AnonUser(id=uuid.uuid4())
         session.add(anon)
@@ -49,7 +49,9 @@ async def test_check_answer_reveals_only_this_exams_questions() -> None:
             await service.check_answer(session, exam, "9999", "a")
 
 
-async def test_check_refuses_exams_without_immediate_feedback() -> None:
+async def test_check_refuses_exams_without_immediate_feedback(
+    seeded_bank: None,
+) -> None:
     async with SessionLocal() as session:
         anon = AnonUser(id=uuid.uuid4())
         session.add(anon)
@@ -60,7 +62,7 @@ async def test_check_refuses_exams_without_immediate_feedback() -> None:
             await service.check_answer(session, exam, exam.question_ids[0], "a")
 
 
-async def test_check_endpoint_rejects_another_users_exam() -> None:
+async def test_check_endpoint_rejects_another_users_exam(seeded_bank: None) -> None:
     async with SessionLocal() as session:
         anon = AnonUser(id=uuid.uuid4())
         session.add(anon)
@@ -79,7 +81,7 @@ async def test_check_endpoint_rejects_another_users_exam() -> None:
     assert response.status_code == 404
 
 
-async def test_check_endpoint_returns_explanation_when_available() -> None:
+async def test_check_endpoint_reports_feedback_mode(seeded_bank: None) -> None:
     async with SessionLocal() as session:
         has_explanations = await session.scalar(select(Question.id).limit(1))
         if not has_explanations:
@@ -109,3 +111,5 @@ async def test_check_endpoint_returns_explanation_when_available() -> None:
     assert body["question_id"] == exam.question_ids[0]
     assert body["is_correct"] in {True, False}
     assert "answer" in body
+    # Synthetic questions have no precomputed explanation; the key must exist.
+    assert "explanation" in body
