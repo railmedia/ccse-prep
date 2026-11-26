@@ -19,12 +19,12 @@ def _settings(**overrides: object) -> Settings:
 def test_password_is_percent_encoded() -> None:
     from sqlalchemy.engine import make_url
 
-    settings = _settings(db_password="p@ss/word?x#y")
+    settings = _settings(db_password="p@ss word/?#%x")
     url = make_url(settings.sqlalchemy_url)
 
     assert url.host == "postgres"
     assert url.database == "ccse"
-    assert url.password == "p@ss/word?x#y"
+    assert url.password == "p@ss word/?#%x"
 
 
 def test_explicit_url_wins() -> None:

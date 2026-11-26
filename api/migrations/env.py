@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.models import Base
 from app.settings import settings
@@ -16,8 +16,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Single source of truth for the connection string.
-config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+# The URL is passed straight to the engine below. Do NOT put it through
+# config.set_main_option(): configparser treats "%" as interpolation, and a
+# percent-encoded password ("%40" for "@") raises ValueError before connecting.
 
 target_metadata = Base.metadata
 
@@ -46,11 +47,7 @@ def _do_run_migrations(connection: Connection) -> None:
 
 
 async def _run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_async_engine(settings.sqlalchemy_url, poolclass=pool.NullPool)
     async with connectable.connect() as connection:
         await connection.run_sync(_do_run_migrations)
     await connectable.dispose()

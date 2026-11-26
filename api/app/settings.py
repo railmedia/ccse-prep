@@ -1,5 +1,5 @@
 from functools import lru_cache
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     def sqlalchemy_url(self) -> str:
         if self.database_url:
             return self.database_url
-        user = quote_plus(self.db_user)
-        password = quote_plus(self.db_password)
+        user = quote(self.db_user, safe="")
+        password = quote(self.db_password, safe="")
         return (
             f"postgresql+asyncpg://{user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
         )
