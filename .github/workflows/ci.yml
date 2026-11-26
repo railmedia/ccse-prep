@@ -215,12 +215,14 @@ jobs:
     env:
       # Lets the Actions UI redeploy or roll back to an existing image tag.
       TAG: ${{ github.event.inputs.tag || github.sha }}
+      # Secret if you want it redacted in logs, repo/environment variable if
+      # you don't mind it being visible. Falls back to 22.
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22' }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
@@ -243,14 +245,12 @@ jobs:
       - name: Sync compose files
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
         run: |
           rsync -az --delete -e "ssh -p ${DEPLOY_PORT} -o BatchMode=yes" infra/ \
             "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}:${{ vars.DEPLOY_PATH }}/infra/"
       - name: Deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
         run: |
           ssh -p "${DEPLOY_PORT}" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}" \
