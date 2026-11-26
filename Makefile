@@ -11,7 +11,7 @@ ENVF := --env-file .env
 TOOLS := --profile tools
 
 .PHONY: help env up up-local-llm down logs ps build migrate shell psql \
-        test test-all lint fmt typecheck check config-dev config-prod deploy \
+        test test-all lint fmt typecheck check config-dev config-prod deploy build scan \
         ingest index precompute eval golden scorecard costs backup
 
 help: ## Show this help
@@ -41,6 +41,13 @@ ps: ## Show container status
 build: ## Build both images (prod targets)
 	docker build --target prod -t ccse-prep/api:dev api
 	docker build --target prod -t ccse-prep/web:dev web
+
+scan: ## Trivy-scan the local prod images (what CI gates on)
+	@for image in ccse-prep/api:dev ccse-prep/web:dev; do \
+		echo "==> $$image"; \
+		docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image \
+			--quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed "$$image" || exit 1; \
+	done
 
 migrate: ## Apply database migrations
 	$(DEV) $(ENVF) $(TOOLS) run --rm migrate
