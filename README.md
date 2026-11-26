@@ -126,13 +126,25 @@ The CCSE manual and question bank are © Instituto Cervantes. This repository sh
 
 ## Deployment
 
-CI builds both images, pushes them to GHCR tagged with the commit SHA, runs Trivy, then rsyncs `infra/` to the host and runs `./infra/deploy.sh`: pull → `alembic upgrade head` → restart → health check through the public URL → **rollback to the previous tag on failure**.
+Full runbook: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+CI builds both images on push to `main`, pushes them to GHCR tagged with the commit SHA, scans with Trivy, then rsyncs `infra/` to the host and runs `./infra/deploy.sh`: pull → `alembic upgrade head` → restart → health check through the public URL → **rollback to the previous tag on failure**.
+
+```bash
+# on the server, once
+mkdir -p /home/production/tudorache.me/ccse-prep
+cp env.prod.example /home/production/tudorache.me/ccse-prep/.env   # then edit it
+
+# after the first successful image build: make the GHCR packages public
+# (Packages → ccse-prep/api → Package settings → Change visibility)
+
+# then load the data: a fresh database has no questions
+cd /home/production/tudorache.me/ccse-prep && ./infra/bootstrap.sh
+```
 
 | Kind | Name | Purpose |
 |---|---|---|
 | secret | `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` | SSH access |
-| variable | `DEPLOY_PATH` | e.g. `/opt/ccse-prep` |
+| variable | `DEPLOY_PATH` | `/home/production/tudorache.me/ccse-prep` |
 
-The host needs a `.env` (provisioned once) with `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `IMAGE_PREFIX`, `CCSE_COOKIE_SECURE=true`, and the Traefik entrypoint/cert-resolver names. Nightly backups: `infra/backup.sh` (pg_dump → restic).
-
-The weekly `eval` workflow downloads the manual, ingests it, embeds it and fails if `hybrid+rerank` recall@5 drops below 0.85.
+The weekly `eval` workflow downloads the manual, ingests it, embeds it and fails if `hybrid+rerank` recall@5 drops below 0.85. Nightly backups: `infra/backup.sh` (pg_dump → restic).

@@ -7,6 +7,8 @@
 services:
   api:
     pull_policy: always
+    # The precompute job loads the ONNX encoder; 512 MiB is too tight.
+    mem_limit: 1g
     networks: [internal, proxy]
     cap_drop: [ALL]
     security_opt:
@@ -39,3 +41,11 @@ services:
       traefik.http.routers.ccse-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-le}
       traefik.http.routers.ccse-web.priority: "10"
       traefik.http.services.ccse-web.loadbalancer.server.port: "80"
+      # Plain HTTP redirects to HTTPS. The ACME challenge path is excluded so
+      # HTTP-01 certificate issuance still works.
+      traefik.http.routers.ccse-web-http.rule: "Host(`${PUBLIC_HOST:?PUBLIC_HOST must be set}`) && !PathPrefix(`/.well-known/acme-challenge`)"
+      traefik.http.routers.ccse-web-http.entrypoints: ${TRAEFIK_HTTP_ENTRYPOINT:-web}
+      traefik.http.routers.ccse-web-http.priority: "200"
+      traefik.http.routers.ccse-web-http.middlewares: ccse-https@docker
+      traefik.http.middlewares.ccse-https.redirectscheme.scheme: https
+      traefik.http.middlewares.ccse-https.redirectscheme.permanent: "true"

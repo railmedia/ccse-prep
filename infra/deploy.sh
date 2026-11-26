@@ -68,7 +68,13 @@ echo "==> starting"
 run_compose up -d --remove-orphans
 
 echo "==> waiting for health"
-for attempt in $(seq 1 30); do
+if [[ "${SKIP_HEALTHCHECK:-0}" == "1" ]]; then
+  echo "!! SKIP_HEALTHCHECK=1 — not verifying, not rolling back"
+  exit 0
+fi
+
+ATTEMPTS="${HEALTH_ATTEMPTS:-45}"
+for attempt in $(seq 1 "$ATTEMPTS"); do
   if curl -fsS --max-time 5 "https://${PUBLIC_HOST}/api/health" >/dev/null; then
     echo "==> healthy after ${attempt} attempt(s)"
     exit 0
@@ -77,6 +83,11 @@ for attempt in $(seq 1 30); do
 done
 
 echo "!! health check failed; rolling back to ${PREVIOUS_TAG}" >&2
+echo "   check, in order:" >&2
+echo "   - DNS:   dig +short ${PUBLIC_HOST}" >&2
+echo "   - cert:  docker logs traefik 2>&1 | grep -i -m5 acme" >&2
+echo "   - net:   docker inspect --format '{{json .NetworkSettings.Networks}}' \$(docker compose -f infra/compose.yml -f infra/compose.prod.yml --env-file .env ps -q api)" >&2
+echo "   - logs:  docker compose -f infra/compose.yml -f infra/compose.prod.yml logs --tail=50 api" >&2
 set_env TAG "$PREVIOUS_TAG"
 run_compose pull
 run_compose up -d --remove-orphans

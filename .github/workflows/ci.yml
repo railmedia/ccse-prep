@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "0 4 * * 1" # weekly: retrieval gate + provider drift
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing image tag to deploy (default: this commit)"
+        required: false
+        type: string
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -129,7 +134,9 @@ jobs:
   build:
     name: images / build and push
     needs: [api, web, compose]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -197,9 +204,17 @@ jobs:
   deploy:
     name: deploy / production
     needs: scan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      # Lets the Actions UI redeploy or roll back to an existing image tag.
+      TAG: ${{ github.event.inputs.tag || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure SSH
@@ -215,4 +230,4 @@ jobs:
       - name: Deploy
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd ${{ vars.DEPLOY_PATH }} && TAG=${{ github.sha }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} ./infra/deploy.sh"
+            "cd ${{ vars.DEPLOY_PATH }} && TAG=${{ env.TAG }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} ./infra/deploy.sh"
