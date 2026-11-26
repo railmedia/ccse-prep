@@ -242,16 +242,36 @@ jobs:
             echo "::error::ssh-keyscan produced no host keys for ${DEPLOY_HOST}:${DEPLOY_PORT}"
             exit 1
           fi
+      - name: Ensure target directory
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_PATH}" ]; then
+            echo "::error::DEPLOY_PATH is not set — add a repository variable (or secret) named DEPLOY_PATH"
+            exit 1
+          fi
+          ssh -p "${DEPLOY_PORT}" -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p '${DEPLOY_PATH}/infra'"
+
       - name: Sync compose files
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
         run: |
+          set -euo pipefail
           rsync -az --delete -e "ssh -p ${DEPLOY_PORT} -o BatchMode=yes" infra/ \
-            "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}:${{ vars.DEPLOY_PATH }}/infra/"
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/infra/"
+
       - name: Deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
         run: |
-          ssh -p "${DEPLOY_PORT}" -o BatchMode=yes \
-            "${{ secrets.DEPLOY_USER }}@${DEPLOY_HOST}" \
-            "cd ${{ vars.DEPLOY_PATH }} && TAG=${{ env.TAG }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} ./infra/deploy.sh"
+          set -euo pipefail
+          ssh -p "${DEPLOY_PORT}" -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && TAG=${TAG} IMAGE_PREFIX=${IMAGE_PREFIX} ./infra/deploy.sh"
