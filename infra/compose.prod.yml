@@ -30,7 +30,8 @@ services:
   web:
     pull_policy: always
     networks: [proxy]
-    cap_drop: [ALL]
+    # No cap_drop here: nginx's master runs as root and needs SETUID/SETGID to
+    # start workers. Dropping all capabilities makes the container exit on boot.
     security_opt:
       - no-new-privileges:true
     labels:

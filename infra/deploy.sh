@@ -74,15 +74,22 @@ if [[ "${SKIP_HEALTHCHECK:-0}" == "1" ]]; then
 fi
 
 ATTEMPTS="${HEALTH_ATTEMPTS:-45}"
+api_ok=0
+web_ok=0
 for attempt in $(seq 1 "$ATTEMPTS"); do
-  if curl -fsS --max-time 5 "https://${PUBLIC_HOST}/api/health" >/dev/null; then
+  api_ok=0
+  web_ok=0
+  curl -fsS --max-time 5 "https://${PUBLIC_HOST}/api/health" >/dev/null && api_ok=1
+  # The static frontend has its own router; a dead web container must not pass.
+  curl -fsS --max-time 5 -o /dev/null "https://${PUBLIC_HOST}/" && web_ok=1
+  if [ "$api_ok" = 1 ] && [ "$web_ok" = 1 ]; then
     echo "==> healthy after ${attempt} attempt(s)"
     exit 0
   fi
   sleep 2
 done
 
-echo "!! health check failed; rolling back to ${PREVIOUS_TAG}" >&2
+echo "!! health check failed (api=${api_ok} web=${web_ok}); rolling back to ${PREVIOUS_TAG}" >&2
 echo "   check, in order:" >&2
 echo "   - DNS:   dig +short ${PUBLIC_HOST}" >&2
 echo "   - cert:  docker logs traefik 2>&1 | grep -i -m5 acme" >&2

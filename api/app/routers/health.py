@@ -28,6 +28,7 @@ async def api_health() -> dict[str, Any]:
 
 
 @router.get("/ready", summary="Readiness (checks the database)")
+@router.get("/api/ready", summary="Readiness, public alias")
 async def ready(response: Response) -> dict[str, Any]:
     ok, latency_ms = await db.ping()
     if not ok:
