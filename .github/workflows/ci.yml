@@ -44,7 +44,7 @@ jobs:
       CCSE_DATABASE_URL: postgresql+asyncpg://ccse:ccse@localhost:5432/ccse
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: api/uv.lock
@@ -111,7 +111,7 @@ jobs:
       MANUAL_URL: https://cervantes.org/sites/public/produccion/files/2026-10/manual-preparacion-prueba-ccse-2026.pdf
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: api/uv.lock
