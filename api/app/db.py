@@ -12,7 +12,7 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 engine = create_async_engine(
-    settings.database_url,
+    settings.sqlalchemy_url,
     pool_pre_ping=True,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_pool_max_overflow,

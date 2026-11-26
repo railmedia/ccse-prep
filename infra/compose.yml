@@ -15,11 +15,19 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Discrete DB values, not a URL: the application percent-encodes the password,
+# so a credential containing @ : / ? # cannot corrupt the host.
 x-api-env: &api-env
   CCSE_ENV: ${CCSE_ENV:-dev}
   CCSE_LOG_LEVEL: ${CCSE_LOG_LEVEL:-INFO}
-  CCSE_DATABASE_URL: >-
-    postgresql+asyncpg://${POSTGRES_USER:-ccse}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-ccse}
+  CCSE_DB_HOST: postgres
+  CCSE_DB_PORT: "5432"
+  CCSE_DB_NAME: ${POSTGRES_DB:-ccse}
+  CCSE_DB_USER: ${POSTGRES_USER:-ccse}
+  CCSE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+  # Blank this out so a stray value in .env (env_file) cannot override the
+  # URL assembled from the DB_* values above.
+  CCSE_DATABASE_URL: ""
 
 services:
   postgres:
