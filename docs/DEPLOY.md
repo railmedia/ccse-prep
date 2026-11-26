@@ -154,6 +154,7 @@ docker compose -f infra/compose.yml -f infra/compose.prod.yml exec -T postgres \
 |---|---|---|
 | `pull access denied` | package still private | step 3 |
 | Deploy healthy but 404 from Traefik | wrong network or entrypoint | check `docker inspect` labels; `TRAEFIK_ENTRYPOINT` must exist |
+| `/` 404 while `/api/health` is 200 | web container is **unhealthy**; Traefik excludes unhealthy backends | `docker inspect --format '{{.State.Health.Status}}' ccse-prep-web-1` — if unhealthy, check the health command (must use `127.0.0.1`, not `localhost`) |
 | Health check times out on the first deploy | DNS or certificate not ready | `dig`, `docker logs traefik \| grep -i acme`; or `SKIP_HEALTHCHECK=1 ./infra/deploy.sh` for that first run |
 | `question bank is empty` | data not loaded | `./infra/bootstrap.sh` |
 | 502 from the API route | container crashed | `docker compose ... logs --tail=100 api` |

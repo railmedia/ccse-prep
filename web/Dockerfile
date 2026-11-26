@@ -20,4 +20,6 @@ FROM nginx:stable-alpine AS prod
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost/healthz || exit 1
+# 127.0.0.1, not localhost: nginx binds IPv4 only here, and localhost
+# resolves to ::1 first, which fails and marks the container unhealthy.
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/healthz || exit 1

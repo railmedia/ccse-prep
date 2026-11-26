@@ -67,6 +67,33 @@ run_compose --profile tools run --rm migrate
 echo "==> starting"
 run_compose up -d --remove-orphans
 
+diagnose() {
+  echo "--- containers ---" >&2
+  run_compose ps >&2 || true
+  docker ps -a --filter "name=ccse-prep-" \
+    --format '{{.Names}}\t{{.Status}}\t{{.Image}}' >&2 || true
+
+  for service in web api; do
+    cid="$(run_compose ps -q "$service" 2>/dev/null || true)"
+    [ -n "$cid" ] || continue
+    echo "--- $service ---" >&2
+    docker inspect "$cid" --format 'state={{.State.Status}} exit={{.State.ExitCode}}' >&2 || true
+    docker inspect "$cid" --format 'capdrop={{json .HostConfig.CapDrop}}' >&2 || true
+    docker inspect "$cid" --format '{{json .NetworkSettings.Networks}}' >&2 || true
+    docker inspect "$cid" --format '{{json .Config.Labels}}' \
+      | tr ',' '\n' | grep -i traefik >&2 || true
+    docker logs --tail=25 "$cid" >&2 2>&1 || true
+  done
+
+  traefik="$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)"
+  if [ -n "$traefik" ]; then
+    echo "--- traefik ($traefik) ---" >&2
+    docker logs "$traefik" --tail=80 2>&1 | grep -i -E 'ccse|error' | tail -20 >&2 || true
+  else
+    echo "--- no traefik container found by name ---" >&2
+  fi
+}
+
 echo "==> waiting for health"
 if [[ "${SKIP_HEALTHCHECK:-0}" == "1" ]]; then
   echo "!! SKIP_HEALTHCHECK=1 — not verifying, not rolling back"
@@ -90,6 +117,7 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
 done
 
 echo "!! health check failed (api=${api_ok} web=${web_ok}); rolling back to ${PREVIOUS_TAG}" >&2
+diagnose
 echo "   check, in order:" >&2
 echo "   - DNS:   dig +short ${PUBLIC_HOST}" >&2
 echo "   - cert:  docker logs traefik 2>&1 | grep -i -m5 acme" >&2
